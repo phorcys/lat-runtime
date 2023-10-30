@@ -1,0 +1,265 @@
+#!/usr/bin/bash
+######################################################################
+# @author      : Xiaotian Wu (yetist@gmail.com)
+# @file        : run
+# @created     : 星期三 10月 25, 2023 21:13:04 CST
+#
+# @description :
+######################################################################
+set -e
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-/usr/share/devtools}
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+TOP_DIR=$( dirname $SCRIPT_DIR )
+TODAY=$(date +%Y%m%d)
+ROOTFS_DIR=$TOP_DIR/archlinux-rootfs
+RUNTIME_DIR=$TOP_DIR/lat-runtime
+X86_NAME=lat-i386
+X64_NAME=lat-x86_64
+RUNTIME_X86_DIR=$RUNTIME_DIR/$X86_NAME
+RUNTIME_X64_DIR=$RUNTIME_DIR/$X64_NAME
+
+pkg_64_lst=(
+acl
+alsa-lib
+at-spi2-core
+brotli
+bzip2
+cairo
+clang
+colord
+curl
+dbus
+e2fsprogs
+expat
+flac
+fontconfig
+freetype2
+fribidi
+gcc-libs
+gdk-pixbuf2
+gettext
+glib2
+glibc
+gmp
+gnutls
+gst-plugins-base-libs
+gstreamer
+gtk3
+harfbuzz
+icu
+keyutils
+krb5
+lcms2
+libasyncns
+libcanberra
+libcap
+libcups
+libdatrie
+libdrm
+libelf
+libepoxy
+libffi
+libgcrypt
+libglvnd
+libgpg-error
+libidn2
+libjpeg-turbo
+libldap
+libltdl
+libnl
+libogg
+libpcap
+libpciaccess
+libpng
+libpsl
+libpulse
+librsvg
+libsndfile
+libssh2
+libtasn1
+libthai
+libtiff
+libtirpc
+libunistring
+libunwind
+libva
+libva-mesa-driver
+libvdpau
+libvorbis
+libx11
+libxau
+libxcb
+libxcomposite
+libxcrypt
+libxcursor
+libxdamage
+libxdmcp
+libxext
+libxfixes
+libxft
+libxi
+libxinerama
+libxkbcommon
+libxml2
+libxrandr
+libxrender
+libxshmfence
+libxtst
+libxv
+libxxf86vm
+llvm
+llvm-libs
+lm_sensors
+mesa
+mesa-utils
+mesa-vdpau
+ncurses
+nettle
+nspr
+nss
+opencl-clover-mesa
+opencl-rusticl-mesa
+openssl
+opus
+orc
+p11-kit
+pam
+pango
+pcre2
+pixman
+spirv-llvm-translator
+spirv-tools
+systemd
+tdb
+util-linux
+vulkan-icd-loader
+vulkan-intel
+vulkan-mesa-layers
+vulkan-radeon
+vulkan-swrast
+vulkan-virtio
+wayland
+xcb-util-keysyms
+xz
+zlib
+zstd
+)
+
+pkg_32_lst=(
+  lib32-rust-libs
+)
+
+# start main
+for i in ${pkg_64_lst[@]}; do
+  pkg_32_lst+=("lib32-$i");
+done
+
+mkdir -p $ROOTFS_DIR/var/lib/pacman
+mkdir -p $ROOTFS_DIR/usr/bin/
+mkdir -p $ROOTFS_DIR/{proc,sys,dev}
+if ! mountpoint $ROOTFS_DIR/proc >/dev/null; then
+  sudo mount --bind /proc $ROOTFS_DIR/proc
+fi
+
+if ! mountpoint $ROOTFS_DIR/sys >/dev/null; then
+  sudo mount --bind /sys $ROOTFS_DIR/sys
+fi
+
+if ! mountpoint $ROOTFS_DIR/dev >/dev/null; then
+  sudo mount --bind /dev $ROOTFS_DIR/dev
+fi
+
+if [ -f /usr/bin/lat-x86_64-static ]; then
+  sudo cp /usr/bin/lat-x86_64-static $ROOTFS_DIR/usr/bin/
+fi
+
+if [ ! -f $ROOTFS_DIR/usr/bin/wine ]; then
+  sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root  $ROOTFS_DIR ${pkg_32_lst[@]} ${pkg_64_lst[@]} wine
+fi
+
+msg "Update mesa in rootfs..."
+if [ ! -d $TOP_DIR/packages ]; then
+  mkdir -p $TOP_DIR/packages
+fi
+
+for i in $TOP_DIR/packages/{,lib32-}mesa/; do
+  pkgname=$(basename $i)
+  pkgs=$(find $TOP_DIR/packages/${pkgname}/ -name "*.pkg.tar.zst")
+  if [ ${#pkgs[@]} -gt 0 ]; then
+    sudo pacman -U --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root $ROOTFS_DIR ${TOP_DIR}/packages/${pkgname}/*.pkg.tar.zst
+  else
+    if [ ! -d $TOP_DIR/packages/${pkgname} ];then
+      mkdir -p $TOP_DIR/packages
+      git clone https://gitlab.archlinux.org/archlinux/packaging/packages/${pkgname}.git $TOP_DIR/packages/${pkgname}
+    fi
+    echo "*******************************************************************"
+    echo "$ #Dont forget to rebuild ${pkgname}"
+    echo "$ cd $TOP_DIR/packages/${pkgname}"
+    echo "$ $TOP_DIR/bin/extra-x86_64-build"
+    echo "$ sudo pacman -U --root  $ROOTFS_DIR packages/${pkgname}/*.pkg.tar.zst"
+    echo "*******************************************************************"
+    sleep 2
+  fi
+done
+
+msg "Create lat runtime..."
+# i386
+sudo rm -rf $RUNTIME_X86_DIR
+mkdir -p $RUNTIME_X86_DIR/usr/bin
+mkdir -p $RUNTIME_X86_DIR/usr/share
+
+sudo cp -a $ROOTFS_DIR/usr/lib32 $RUNTIME_X86_DIR/usr
+sudo rm -rf $RUNTIME_X86_DIR/usr/lib32/locale
+sudo rm -rf $RUNTIME_X86_DIR/usr/lib32/wine
+
+sudo ln -sf /usr/lib/locale $RUNTIME_X86_DIR/usr/lib32/locale
+sudo ln -sf usr/lib32 $RUNTIME_X86_DIR/lib
+sudo ln -sf ../../$X64_NAME/usr/lib $RUNTIME_X86_DIR/usr/lib
+
+# /usr/bin
+sudo cp $ROOTFS_DIR/usr/bin/glxgears32 $RUNTIME_X86_DIR/usr/bin/
+sudo cp $ROOTFS_DIR/usr/bin/glxinfo32 $RUNTIME_X86_DIR/usr/bin/
+sudo cp /usr/bin/ldd $RUNTIME_X86_DIR/usr/bin/
+sudo sed -i 's!^RTLDLIST.*!RTLDLIST="/usr/gnemul/'$X86_NAME'/usr/lib32/ld-linux.so.2"!' $RUNTIME_X86_DIR/usr/bin/ldd
+
+# /usr/share
+sudo cp -a $ROOTFS_DIR/usr/share/vulkan $RUNTIME_X86_DIR/usr/share/
+
+# x86_64
+sudo rm -rf $RUNTIME_X64_DIR
+mkdir -p $RUNTIME_X64_DIR/usr/bin
+mkdir -p $RUNTIME_X64_DIR/usr/share
+
+sudo cp -a $ROOTFS_DIR/usr/lib $RUNTIME_X64_DIR/usr
+sudo rm -rf $RUNTIME_X64_DIR/usr/lib/locale
+sudo rm -rf $RUNTIME_X64_DIR/usr/lib/wine
+
+sudo ln -sf /usr/lib/locale $RUNTIME_X64_DIR/usr/lib/locale
+sudo ln -sf usr/lib $RUNTIME_X64_DIR/lib64
+sudo ln -sf ../../$X86_NAME/usr/lib32 $RUNTIME_X64_DIR/usr/lib32
+sudo ln -sf /usr/share/terminfo $RUNTIME_X64_DIR/usr/lib/terminfo
+
+# /usr/bin
+sudo cp $ROOTFS_DIR/usr/bin/glxinfo $RUNTIME_X64_DIR/usr/bin/
+sudo cp $ROOTFS_DIR/usr/bin/glxgears $RUNTIME_X64_DIR/usr/bin/
+if [ ! -f /usr/bin/busybox ]; then
+    sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf busybox
+else
+    sudo cp /usr/bin/busybox $RUNTIME_X64_DIR/usr/bin/
+fi
+sudo cp /usr/bin/ldd $RUNTIME_X64_DIR/usr/bin/
+sudo sed -i 's!^RTLDLIST.*!RTLDLIST="/usr/gnemul/'$X64_NAME'/usr/lib/ld-linux-x86-64.so.2"!' $RUNTIME_X64_DIR/usr/bin/ldd
+
+# /usr/share
+sudo cp -a $ROOTFS_DIR/usr/share/vulkan $RUNTIME_X64_DIR/usr/share/
+
+# compress runtime
+cd $RUNTIME_DIR
+msg "Compress runtime..."
+msg2 "Creating ${X86_NAME}-${TODAY}.tar.zst ..."
+sudo tar --zstd -cf ${TOP_DIR}/${X86_NAME}-${TODAY}.tar.zst ${X86_NAME}
+msg2 "Creating ${X64_NAME}-${TODAY}.tar.zst ..."
+sudo tar --zstd -cf ${TOP_DIR}/${X64_NAME}-${TODAY}.tar.zst ${X64_NAME}
