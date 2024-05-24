@@ -21,6 +21,9 @@ X64_NAME=lat-x86_64
 RUNTIME_X86_DIR=$RUNTIME_DIR/$X86_NAME
 RUNTIME_X64_DIR=$RUNTIME_DIR/$X64_NAME
 
+# custom packages
+CUSTOM_PKGS=(lib32-mesa mesa)
+
 pkg_64_lst=(
 acl
 alsa-lib
@@ -189,19 +192,17 @@ if [ ! -f $ROOTFS_DIR/usr/bin/wine ]; then
   sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root  $ROOTFS_DIR ${pkg_32_lst[@]} ${pkg_64_lst[@]} wine
 fi
 
-msg "Update mesa in rootfs..."
+msg "Update custom packages in rootfs..."
 if [ ! -d $TOP_DIR/packages ]; then
   mkdir -p $TOP_DIR/packages
 fi
 
-for i in $TOP_DIR/packages/{,lib32-}mesa/; do
-  pkgname=$(basename $i)
-  pkgs=$(find $TOP_DIR/packages/${pkgname}/ -name "*.pkg.tar.zst")
+for pkgname in ${CUSTOM_PKGS[@]}; do
+  pkgs=(`find $TOP_DIR/packages -name "*.pkg.tar.zst"`)
   if [ ${#pkgs[@]} -gt 0 ]; then
     sudo pacman -U --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root $ROOTFS_DIR ${TOP_DIR}/packages/${pkgname}/*.pkg.tar.zst
   else
     if [ ! -d $TOP_DIR/packages/${pkgname} ];then
-      mkdir -p $TOP_DIR/packages
       git clone https://gitlab.archlinux.org/archlinux/packaging/packages/${pkgname}.git $TOP_DIR/packages/${pkgname}
     fi
     echo "*******************************************************************"
@@ -210,7 +211,7 @@ for i in $TOP_DIR/packages/{,lib32-}mesa/; do
     echo "$ $TOP_DIR/bin/extra-x86_64-build"
     echo "$ sudo pacman -U --root  $ROOTFS_DIR packages/${pkgname}/*.pkg.tar.zst"
     echo "*******************************************************************"
-    sleep 2
+    sleep 5
   fi
 done
 
