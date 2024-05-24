@@ -4,6 +4,7 @@
 set -eu
 
 _DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-/usr/share/devtools}
+QUIET=1
 # shellcheck source=src/lib/common.sh
 source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
 # shellcheck source=src/lib/archroot.sh
@@ -84,6 +85,18 @@ check_root SOURCE_DATE_EPOCH,SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST,MAKEFLAGS,PACKAG
 # Pass all arguments after -- right to makepkg
 makechrootpkg_args+=("${@:$OPTIND}")
 
+# register static-link lat-x86_64-static binfmt
+if [ ! -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # we must use static-link lat-x86_64-static in chroot environment.
+  sudo cp ${WORK_TOP_DIR}/bin/lat-x86_64-static /usr/bin/lat-x86_64-static
+fi
+
+if ! grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf >/dev/null; then
+  sudo sed -i 's/x86_64/x86_64-static/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
+
 if ${clean_first} || [[ ! -d "${chroots}/${repo}-${arch}" ]]; then
 	msg "Creating chroot for [%s] (%s)..." "${repo}" "${arch}"
 
@@ -123,3 +136,15 @@ fi
 
 msg "Building in chroot for [%s] (%s)..." "${repo}" "${arch}"
 exec makechrootpkg -r "${chroots}/${repo}-${arch}" "${makechrootpkg_args[@]}"
+
+# restore current lat-x86_64 binfmt
+if [ -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # but we use static-link lat-x86_64-static in chroot environment.
+  # here we restore the system lat-x86_64 binfmt register
+  sudo rm -f /usr/bin/lat-x86_64-static
+fi
+if grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf >/dev/null; then
+  sudo sed -i 's/x86_64-static/x86_64/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
