@@ -172,9 +172,18 @@ if ! mountpoint $ROOTFS_DIR/dev >/dev/null; then
   sudo mount --bind /dev $ROOTFS_DIR/dev
 fi
 
-if [ -f /usr/bin/lat-x86_64-static ]; then
-  sudo cp /usr/bin/lat-x86_64-static $ROOTFS_DIR/usr/bin/
+# register static-link lat-x86_64-static binfmt
+if [ ! -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # we must use static-link lat-x86_64-static in chroot environment.
+  sudo cp ${TOP_DIR}/bin/lat-x86_64-static /usr/bin/lat-x86_64-static
 fi
+
+if ! grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf; then
+  sudo sed -i 's/x86_64/x86_64-static/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
+sudo cp /usr/bin/lat-x86_64-static $ROOTFS_DIR/usr/bin/
 
 if [ ! -f $ROOTFS_DIR/usr/bin/wine ]; then
   sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root  $ROOTFS_DIR ${pkg_32_lst[@]} ${pkg_64_lst[@]} wine
@@ -255,6 +264,18 @@ sudo sed -i 's!^RTLDLIST.*!RTLDLIST="/usr/gnemul/'$X64_NAME'/usr/lib/ld-linux-x8
 
 # /usr/share
 sudo cp -a $ROOTFS_DIR/usr/share/vulkan $RUNTIME_X64_DIR/usr/share/
+
+# restore current lat-x86_64 binfmt
+if [ -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # but we use static-link lat-x86_64-static in chroot environment.
+  # here we restore the system lat-x86_64 binfmt register
+  sudo rm -f /usr/bin/lat-x86_64-static
+fi
+if grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf; then
+  sudo sed -i 's/x86_64-static/x86_64/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
 
 # compress runtime
 cd $RUNTIME_DIR
