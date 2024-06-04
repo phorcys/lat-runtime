@@ -38,6 +38,8 @@ libibus
 samba
 sndio
 )
+# custom packages
+CUSTOM_PKGS=(lib32-mesa mesa)
 
 pkg_64_lst=(
 acl
@@ -214,38 +216,45 @@ if ! mountpoint $ROOTFS_DIR/dev >/dev/null; then
   sudo mount --bind /dev $ROOTFS_DIR/dev
 fi
 
-if [ -f /usr/bin/lat-x86_64-static ]; then
-  sudo cp /usr/bin/lat-x86_64-static $ROOTFS_DIR/usr/bin/
+# register static-link lat-x86_64-static binfmt
+if [ ! -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # we must use static-link lat-x86_64-static in chroot environment.
+  sudo cp ${TOP_DIR}/bin/lat-x86_64-static /usr/bin/lat-x86_64-static
 fi
+
+if ! grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf >/dev/null; then
+  sudo sed -i 's/x86_64/x86_64-static/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
+sudo cp /usr/bin/lat-x86_64-static $ROOTFS_DIR/usr/bin/
 
 if [ ! -f $ROOTFS_DIR/usr/bin/wine ]; then
-  sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root  $ROOTFS_DIR ${pkg_32_lst[@]} ${pkg_64_lst[@]} wine
+  sudo pacman -Sy --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root $ROOTFS_DIR ${pkg_32_lst[@]} ${pkg_64_lst[@]} wine
 fi
 
-msg "Update mesa in rootfs..."
+msg "Update custom packages in rootfs..."
 if [ ! -d $TOP_DIR/packages ]; then
   mkdir -p $TOP_DIR/packages
 fi
 
-for i in $TOP_DIR/packages/{,lib32-}mesa/; do
-  pkgname=$(basename $i)
-  pkgs=$(find $TOP_DIR/packages/${pkgname}/ -name "*.pkg.tar.zst")
-  if [ ${#pkgs[@]} -gt 0 ]; then
-    sudo pacman -U --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root $ROOTFS_DIR ${TOP_DIR}/packages/${pkgname}/*.pkg.tar.zst
-  else
-    if [ ! -d $TOP_DIR/packages/${pkgname} ];then
-      mkdir -p $TOP_DIR/packages
-      git clone https://gitlab.archlinux.org/archlinux/packaging/packages/${pkgname}.git $TOP_DIR/packages/${pkgname}
-    fi
-    echo "*******************************************************************"
-    echo "$ #Dont forget to rebuild ${pkgname}"
-    echo "$ cd $TOP_DIR/packages/${pkgname}"
-    echo "$ $TOP_DIR/bin/extra-x86_64-build"
-    echo "$ sudo pacman -U --root  $ROOTFS_DIR packages/${pkgname}/*.pkg.tar.zst"
-    echo "*******************************************************************"
-    sleep 2
-  fi
-done
+pkgs=(`find $TOP_DIR/packages -name "*.pkg.tar.zst"`)
+if [ ${#pkgs[@]} -gt 0 ]; then
+  sudo pacman -U --noconfirm --config ${TOP_DIR}/conf/pacman.conf --root $ROOTFS_DIR ${pkgs[@]}
+else
+  for pkgname in ${CUSTOM_PKGS[@]}; do
+      if [ ! -d $TOP_DIR/packages/${pkgname} ];then
+        git clone https://gitlab.archlinux.org/archlinux/packaging/packages/${pkgname}.git $TOP_DIR/packages/${pkgname}
+      fi
+      echo "*******************************************************************"
+      echo "$ #Dont forget to rebuild ${pkgname} for x86_64 Archlinux"
+      echo "$ cd $TOP_DIR/packages/${pkgname}"
+      echo "$ $TOP_DIR/bin/arch-x86_64-build"
+      echo "$ sudo pacman -U --root  $ROOTFS_DIR packages/${pkgname}/*.pkg.tar.zst"
+      echo "*******************************************************************"
+      sleep 5
+  done
+fi
 
 msg "Create lat runtime..."
 # i386
@@ -297,6 +306,18 @@ sudo sed -i 's!^RTLDLIST.*!RTLDLIST="/usr/gnemul/'$X64_NAME'/usr/lib/ld-linux-x8
 
 # /usr/share
 sudo cp -a $ROOTFS_DIR/usr/share/vulkan $RUNTIME_X64_DIR/usr/share/
+
+# restore current lat-x86_64 binfmt
+if [ -f /usr/bin/lat-x86_64-static ]; then
+  # since lat-1.5.0, lat-x86_64 is dynamic link ELF,
+  # but we use static-link lat-x86_64-static in chroot environment.
+  # here we restore the system lat-x86_64 binfmt register
+  sudo rm -f /usr/bin/lat-x86_64-static
+fi
+if grep 'x86_64-static' /usr/lib/binfmt.d/lat-x86_64*.conf >/dev/null; then
+  sudo sed -i 's/x86_64-static/x86_64/g' /usr/lib/binfmt.d/lat-x86_64*.conf
+  sudo systemctl restart systemd-binfmt.service
+fi
 
 # compress runtime
 cd $RUNTIME_DIR
