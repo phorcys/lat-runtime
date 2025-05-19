@@ -8,6 +8,12 @@ lat-runtime-i386/lat-runtime-x86_64 运行时环境。
 
 # 用法
 
+在 LoongArchlinux 上执行以下命令：
+
 ```
-$ ../bin/make-x86-runtime
+$ ./bin/make-x86-runtime
 ```
+
+最终将在当前目录生成 `lat-i386-YYYYMMDD.tar.zst` 和 `lat-i386-YYYYMMDD.tar.zst` 文件以供发布。
+
+如需打包，请参考 [PKGBUILD](https://github.com/loongarchlinux/laur/blob/main/lat-runtime/PKGBUILD) 文件

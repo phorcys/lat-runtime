@@ -24,6 +24,24 @@ RUNTIME_X64_DIR=$RUNTIME_DIR/$X64_NAME
 # custom packages
 CUSTOM_PKGS=(lib32-mesa mesa)
 
+pkg_64_only_lst=(
+glfw
+gst-plugins-bad-libs
+gst-plugins-ugly
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-plugin-va
+gst-plugin-gtk
+gst-plugin-qsv
+gst-plugin-wpe
+gst-libav
+gstreamer-vaapi
+libibus
+samba
+sndio
+)
+
 pkg_64_lst=(
 acl
 alsa-lib
@@ -44,23 +62,30 @@ fribidi
 gcc-libs
 gdk-pixbuf2
 gettext
+glew
+glew1.10
 glib2
 glibc
 gmp
 gnutls
 gst-plugins-base-libs
+gst-plugins-good
 gstreamer
+gtk2
 gtk3
 harfbuzz
 icu
 keyutils
 krb5
 lcms2
+libaio
 libasyncns
 libcanberra
 libcap
 libcups
+libcurl-gnutls
 libdatrie
+libdecor
 libdrm
 libelf
 libepoxy
@@ -68,6 +93,7 @@ libffi
 libgcrypt
 libglvnd
 libgpg-error
+libice
 libidn2
 libjpeg-turbo
 libldap
@@ -76,10 +102,12 @@ libnl
 libogg
 libpcap
 libpciaccess
+libpipewire
 libpng
 libpsl
 libpulse
 librsvg
+libsm
 libsndfile
 libssh2
 libtasn1
@@ -92,6 +120,7 @@ libva
 libva-mesa-driver
 libvdpau
 libvorbis
+libwebp
 libx11
 libxau
 libxcb
@@ -110,12 +139,14 @@ libxml2
 libxrandr
 libxrender
 libxshmfence
+libxss
 libxtst
 libxv
 libxxf86vm
 llvm
 llvm-libs
 lm_sensors
+mangohud
 mesa
 mesa-utils
 mesa-vdpau
@@ -123,9 +154,11 @@ ncurses
 nettle
 nspr
 nss
+openal
 opencl-clover-mesa
 opencl-rusticl-mesa
 openssl
+openssl-1.1
 opus
 orc
 p11-kit
@@ -133,6 +166,10 @@ pam
 pango
 pcre2
 pixman
+sdl2
+sdl12-compat
+sdl2_image
+sdl2_ttf
 spirv-llvm-translator
 spirv-tools
 systemd
@@ -159,6 +196,11 @@ pkg_32_lst=(
 for i in ${pkg_64_lst[@]}; do
   pkg_32_lst+=("lib32-$i");
 done
+for i in ${pkg_64_only_lst[@]}; do
+  pkg_64_lst+=("$i");
+done
+
+echo "begin make lat-runtime at $ROOTFS_DIR"
 
 mkdir -p $ROOTFS_DIR/var/lib/pacman
 mkdir -p $ROOTFS_DIR/usr/bin/
